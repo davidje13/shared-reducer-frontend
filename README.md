@@ -16,7 +16,7 @@ import SharedReducer, { actionsHandledCallback, actionsSyncedCallback } from 'sh
 const reducer = new SharedReducer(
   'ws://destination',
   'my-token',
-  (data) => {
+  (state) => {
     console.log('latest state is', state);
   },
   (error) => {

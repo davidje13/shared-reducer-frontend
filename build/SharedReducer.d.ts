@@ -13,7 +13,7 @@ export default class SharedReducer<T> {
     private idCounter;
     private ws;
     private pingTimeout;
-    constructor(wsUrl: string, token: string, changeCallback?: ((state: T) => void) | undefined, errorCallback?: ((error: string) => void) | undefined, warningCallback?: ((error: string) => void) | undefined);
+    constructor(wsUrl: string, token?: string | undefined, changeCallback?: ((state: T) => void) | undefined, errorCallback?: ((error: string) => void) | undefined, warningCallback?: ((error: string) => void) | undefined);
     close(): void;
     dispatch: Dispatch<T>;
     addSyncCallback(callback: SyncCallback<T>): void;

@@ -6,6 +6,9 @@ import type {
   SyncCallback,
 } from './DispatchSpec';
 
+// eslint-disable-next-line import/no-extraneous-dependencies, @typescript-eslint/no-require-imports
+const ResolvedWebSocket = (process.env.NODE_ENV === 'production') ? WebSocket : require('ws');
+
 interface Event<T> {
   change: Spec<T>;
   id?: number;
@@ -44,20 +47,22 @@ export default class SharedReducer<T> {
 
   private ws: WebSocket;
 
-  private pingTimeout: number | null = null;
+  private pingTimeout: NodeJS.Timeout | null = null;
 
   public constructor(
     wsUrl: string,
-    token: string,
+    token: string | undefined = undefined,
     private readonly changeCallback: ((state: T) => void) | undefined = undefined,
     private readonly errorCallback: ((error: string) => void) | undefined = undefined,
     private readonly warningCallback: ((error: string) => void) | undefined = undefined,
   ) {
-    this.ws = new WebSocket(wsUrl);
+    this.ws = new ResolvedWebSocket(wsUrl);
     this.ws.addEventListener('message', this.handleMessage);
     this.ws.addEventListener('error', this.handleError);
     this.ws.addEventListener('close', this.handleClose);
-    this.ws.addEventListener('open', () => this.ws.send(token), { once: true });
+    if (token) {
+      this.ws.addEventListener('open', () => this.ws.send(token), { once: true });
+    }
     this.queueNextPing();
   }
 
@@ -69,7 +74,7 @@ export default class SharedReducer<T> {
     this.localChanges = [];
     this.pendingChanges = [];
     if (this.pingTimeout !== null) {
-      window.clearTimeout(this.pingTimeout);
+      clearTimeout(this.pingTimeout);
     }
   }
 
@@ -121,9 +126,9 @@ export default class SharedReducer<T> {
 
   private queueNextPing(): void {
     if (this.pingTimeout !== null) {
-      window.clearTimeout(this.pingTimeout);
+      clearTimeout(this.pingTimeout);
     }
-    this.pingTimeout = window.setTimeout(this.sendPing, PING_INTERVAL);
+    this.pingTimeout = setTimeout(this.sendPing, PING_INTERVAL);
   }
 
   private internalGetUniqueId(): number {
@@ -284,7 +289,7 @@ export default class SharedReducer<T> {
 
   private handleClose = (): void => {
     if (this.pingTimeout !== null) {
-      window.clearTimeout(this.pingTimeout);
+      clearTimeout(this.pingTimeout);
     }
   };
 }

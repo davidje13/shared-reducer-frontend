@@ -7,7 +7,7 @@ const typescriptLint = require('neutrino-typescript-eslint');
 module.exports = {
   options: {
     root: __dirname,
-    tests: 'src',
+    tests: '(src|e2e)',
   },
   use: [
     typescript({ declaration: true }),
