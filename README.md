@@ -2,6 +2,9 @@
 
 Shared state management via websockets.
 
+Designed to work with
+[shared-reducer-backend](https://github.com/davidje13/shared-reducer-backend).
+
 ## Install dependency
 
 ```bash
