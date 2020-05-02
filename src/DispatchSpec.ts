@@ -6,7 +6,7 @@ interface MarkedSyncCallback<T> extends SyncCallback<T> {
 }
 interface SpecGenerator<T> {
   afterSync?: false;
-  (state: T): DispatchSpec<T>;
+  (state: T): SpecSource<T>[] | null | undefined;
 }
 export type SpecSource<T> = (
   Spec<T> |
@@ -16,5 +16,5 @@ export type SpecSource<T> = (
   undefined
 );
 
-export type DispatchSpec<T> = SpecSource<T>[] | null | undefined;
-export type Dispatch<T> = (specs: DispatchSpec<T>) => void;
+export type Dispatch<T> = (specs: SpecSource<T>[] | null | undefined) => void;
+export type DispatchSpec<T> = SpecSource<T>[];

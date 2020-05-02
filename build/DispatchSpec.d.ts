@@ -5,10 +5,10 @@ interface MarkedSyncCallback<T> extends SyncCallback<T> {
 }
 interface SpecGenerator<T> {
     afterSync?: false;
-    (state: T): DispatchSpec<T>;
+    (state: T): SpecSource<T>[] | null | undefined;
 }
 export declare type SpecSource<T> = (Spec<T> | SpecGenerator<T> | MarkedSyncCallback<T> | null | undefined);
-export declare type DispatchSpec<T> = SpecSource<T>[] | null | undefined;
-export declare type Dispatch<T> = (specs: DispatchSpec<T>) => void;
+export declare type Dispatch<T> = (specs: SpecSource<T>[] | null | undefined) => void;
+export declare type DispatchSpec<T> = SpecSource<T>[];
 export {};
 //# sourceMappingURL=DispatchSpec.d.ts.map

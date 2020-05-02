@@ -1,6 +1,5 @@
 import { update, combine, Spec } from 'json-immutability-helper';
 import type {
-  DispatchSpec,
   Dispatch,
   SpecSource,
   SyncCallback,
@@ -179,7 +178,11 @@ export default class SharedReducer<T> {
         this.addSyncCallback(change);
         return false;
       }
-      return this.internalApply(change(oldState));
+      const changes = change(oldState);
+      if (!changes || !changes.length) {
+        return false;
+      }
+      return this.internalApply(changes);
     }
 
     this.latestLocalState = update(oldState, change);
@@ -201,11 +204,7 @@ export default class SharedReducer<T> {
     return this.internalApplyPart(combine<T>(changes));
   }
 
-  private internalApply(changes: DispatchSpec<T>): boolean {
-    if (!changes || !changes.length) {
-      return false;
-    }
-
+  private internalApply(changes: SpecSource<T>[]): boolean {
     let anyChange = false;
     const aggregate: Spec<T>[] = [];
     changes.forEach((change) => {
