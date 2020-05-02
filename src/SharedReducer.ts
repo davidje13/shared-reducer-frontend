@@ -5,9 +5,6 @@ import type {
   SyncCallback,
 } from './DispatchSpec';
 
-// eslint-disable-next-line import/no-extraneous-dependencies, @typescript-eslint/no-require-imports
-const ResolvedWebSocket = (process.env.NODE_ENV === 'production') ? WebSocket : require('ws');
-
 interface Event<T> {
   change: Spec<T>;
   id?: number;
@@ -25,6 +22,23 @@ const PING_INTERVAL = 20 * 1000;
 
 function isError(m: Event<unknown> | ApiError): m is ApiError {
   return m.error !== undefined;
+}
+
+function getWebSocketClass(): typeof WebSocket {
+  // This condition will disappear at compile time and the function will be inlined;
+  // The output in /build/ always uses WebSocket, never require('ws')
+
+  /* eslint-disable
+       import/no-extraneous-dependencies,
+       @typescript-eslint/no-require-imports,
+       global-require
+  */
+  return (process.env.NODE_ENV === 'production') ? WebSocket : require('ws');
+  /* eslint-enable
+       import/no-extraneous-dependencies,
+       @typescript-eslint/no-require-imports,
+       global-require
+  */
 }
 
 export default class SharedReducer<T> {
@@ -55,7 +69,7 @@ export default class SharedReducer<T> {
     private readonly errorCallback: ((error: string) => void) | undefined = undefined,
     private readonly warningCallback: ((error: string) => void) | undefined = undefined,
   ) {
-    this.ws = new ResolvedWebSocket(wsUrl);
+    this.ws = new (getWebSocketClass())(wsUrl);
     this.ws.addEventListener('message', this.handleMessage);
     this.ws.addEventListener('error', this.handleError);
     this.ws.addEventListener('close', this.handleClose);
