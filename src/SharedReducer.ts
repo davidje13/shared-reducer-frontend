@@ -93,8 +93,17 @@ export default class SharedReducer<T> {
     }
   };
 
-  public addSyncCallback(callback: SyncCallback<T>): void {
-    this.dispatch([actionsSyncedCallback(callback)]);
+  public addSyncCallback(
+    resolve: (state: T) => void,
+    reject?: (message: string) => void,
+  ): void {
+    this.dispatch([actionsSyncedCallback(resolve, reject)]);
+  }
+
+  public syncedState(): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.addSyncCallback(resolve, reject);
+    });
   }
 
   public getState(): T | undefined {
@@ -191,8 +200,8 @@ export default class SharedReducer<T> {
       const state = this.getState();
       if (state) {
         this.changeCallback?.(state);
-        localChange?.syncCallbacks.forEach((fn) => fn(state));
       }
+      localChange?.syncCallbacks.forEach((fn) => fn.reject?.(message.error));
       return;
     }
 

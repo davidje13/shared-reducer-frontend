@@ -3,6 +3,7 @@ import {
   websocketHandler,
   InMemoryModel,
   ReadWrite,
+  ReadOnly,
 } from 'shared-reducer-backend';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
@@ -19,6 +20,7 @@ const broadcaster = new Broadcaster(model);
 
 const app = new WebSocketExpress();
 const handler = websocketHandler(broadcaster);
+app.ws('/:id/read', handler((req) => req.params.id, () => ReadOnly));
 app.ws('/:id', handler((req) => req.params.id, () => ReadWrite));
 
 function addressToString(addr: AddressInfo | string, protocol = 'http'): string {
@@ -28,12 +30,6 @@ function addressToString(addr: AddressInfo | string, protocol = 'http'): string 
   const { address, family, port } = addr;
   const host = (family === 'IPv6') ? `[${address}]` : address;
   return `${protocol}://${host}:${port}`;
-}
-
-function nextSync<T>(reducer: SharedReducer<T>): Promise<T> {
-  return new Promise((resolve) => {
-    reducer.addSyncCallback(resolve);
-  });
 }
 
 describe('e2e', () => {
@@ -75,16 +71,16 @@ describe('e2e', () => {
 
     it('invokes synchronize callbacks when state is first retrieved', async () => {
       reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
-      const state = await nextSync(reducer);
+      const state = await reducer.syncedState();
       expect(state).toEqual({ foo: 'v1', bar: 10 });
     });
 
     it('reflects state changes back to the sender', async () => {
       reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
-      await nextSync(reducer);
+      await reducer.syncedState();
 
       reducer.dispatch([{ foo: ['=', 'v2'] }]);
-      const state = await nextSync(reducer);
+      const state = await reducer.syncedState();
 
       expect(state).toEqual({ foo: 'v2', bar: 10 });
     });
@@ -99,7 +95,7 @@ describe('e2e', () => {
         done();
       }, fail, fail);
 
-      nextSync(reducer).then(() => {
+      reducer.syncedState().then(() => {
         waiting = true;
         return broadcaster.update('a', { foo: ['=', 'v2'] });
       });
@@ -107,18 +103,18 @@ describe('e2e', () => {
 
     it('merges external state changes', async () => {
       reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
-      await nextSync(reducer);
+      await reducer.syncedState();
 
       await broadcaster.update('a', { foo: ['=', 'v2'] });
       reducer.dispatch([{ bar: ['=', 11] }])
-      const state = await nextSync(reducer);
+      const state = await reducer.syncedState();
 
       expect(state).toEqual({ foo: 'v2', bar: 11 });
     });
 
     it('maintains local state changes until the server syncs', async () => {
       reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
-      await nextSync(reducer);
+      await reducer.syncedState();
 
       reducer.dispatch([{ foo: ['=', 'v2'] }]);
       expect(reducer.getState()).toEqual({ foo: 'v2', bar: 10 });
@@ -126,15 +122,54 @@ describe('e2e', () => {
 
     it('applies local state changes on top of the server state', async () => {
       reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
-      await nextSync(reducer);
+      await reducer.syncedState();
 
       await broadcaster.update('a', { bar: ['=', 20] });
 
       reducer.dispatch([{ bar: ['+', 5] }]);
       expect(reducer.getState()!.bar).toEqual(15); // not synced with server yet
 
-      await nextSync(reducer);
+      await reducer.syncedState();
       expect(reducer.getState()!.bar).toEqual(25); // now synced, local change applies on top
+    });
+  });
+
+  describe('readonly client', () => {
+    it('invokes the warning callback when the server rejects a change', (done) => {
+      reducer = new SharedReducer<TestT>(
+        `${host}/a/read`,
+        undefined,
+        undefined,
+        done.fail,
+        (warning: string) => {
+          expect(warning).toEqual('Update failed: Cannot modify data');
+          done();
+        },
+      );
+
+      reducer.dispatch([{ bar: ['=', 11] }]);
+    });
+
+    it('rolls back local change when rejected by server', async () => {
+      reducer = new SharedReducer<TestT>(`${host}/a/read`, undefined, undefined, fail, undefined);
+      await reducer.syncedState();
+
+      reducer.dispatch([{ bar: ['=', 11] }]);
+      expect(reducer.getState()!.bar).toEqual(11); // not synced with server yet
+
+      try {
+        await reducer.syncedState();
+      } catch (ignore) {}
+      expect(reducer.getState()!.bar).toEqual(10); // now synced, local change reverted
+    });
+
+    it('rejects sync promises when rejected by server', async () => {
+      reducer = new SharedReducer<TestT>(`${host}/a/read`, undefined, undefined, fail, undefined);
+      await reducer.syncedState();
+
+      reducer.dispatch([{ bar: ['=', 11] }]);
+
+      await expect(reducer.syncedState()).rejects.toEqual('Cannot modify data');
     });
   });
 
@@ -142,13 +177,13 @@ describe('e2e', () => {
     it('pushes changes between clients', async () => {
       reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
       reducer2 = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
-      await nextSync(reducer);
-      await nextSync(reducer2);
+      await reducer.syncedState();
+      await reducer2.syncedState();
 
       reducer.dispatch([{ foo: ['=', 'v2'] }]);
-      await nextSync(reducer);
+      await reducer.syncedState();
       reducer2.dispatch([{ bar: ['=', 20] }]);
-      await nextSync(reducer2);
+      await reducer2.syncedState();
 
       expect(reducer2.getState()).toEqual({ foo: 'v2', bar: 20 });
     });

@@ -1,5 +1,8 @@
 import type { Spec } from 'json-immutability-helper';
-export declare type SyncCallback<T> = (state: T) => void;
+export interface SyncCallback<T> {
+    reject?: (message: string) => void;
+    (state: T): void;
+}
 interface MarkedSyncCallback<T> extends SyncCallback<T> {
     afterSync: true;
 }

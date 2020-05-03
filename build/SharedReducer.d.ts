@@ -1,4 +1,4 @@
-import type { Dispatch, SyncCallback } from './DispatchSpec';
+import type { Dispatch } from './DispatchSpec';
 export default class SharedReducer<T> {
     private readonly changeCallback;
     private readonly warningCallback;
@@ -14,7 +14,8 @@ export default class SharedReducer<T> {
     constructor(wsUrl: string, token?: string | undefined, changeCallback?: ((state: T) => void) | undefined, errorCallback?: ((error: string) => void) | undefined, warningCallback?: ((error: string) => void) | undefined);
     close(): void;
     dispatch: Dispatch<T>;
-    addSyncCallback(callback: SyncCallback<T>): void;
+    addSyncCallback(resolve: (state: T) => void, reject?: (message: string) => void): void;
+    syncedState(): Promise<T>;
     getState(): T | undefined;
     private localStateFromServerState;
     private sendCurrentChange;
