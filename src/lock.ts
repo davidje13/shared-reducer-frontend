@@ -1,6 +1,6 @@
 export type Lock = <R>(action: () => R) => R;
 
-export default (errorMessage = 'recursion detected'): Lock => {
+export default (errorMessage: string): Lock => {
   let locked = false;
   return <R>(action: () => R): R => {
     if (locked) {
