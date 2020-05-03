@@ -8,7 +8,7 @@ interface SpecGenerator<T> {
     (state: T): SpecSource<T>[] | null | undefined;
 }
 export declare type SpecSource<T> = (Spec<T> | SpecGenerator<T> | MarkedSyncCallback<T> | null | undefined);
-export declare type Dispatch<T> = (specs: SpecSource<T>[] | null | undefined) => void;
 export declare type DispatchSpec<T> = SpecSource<T>[];
+export declare type Dispatch<T> = (specs: DispatchSpec<T> | null | undefined) => void;
 export {};
 //# sourceMappingURL=DispatchSpec.d.ts.map

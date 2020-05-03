@@ -16,5 +16,5 @@ export type SpecSource<T> = (
   undefined
 );
 
-export type Dispatch<T> = (specs: SpecSource<T>[] | null | undefined) => void;
 export type DispatchSpec<T> = SpecSource<T>[];
+export type Dispatch<T> = (specs: DispatchSpec<T> | null | undefined) => void;

@@ -4,6 +4,9 @@ import type {
   SpecSource,
   SyncCallback,
 } from './DispatchSpec';
+import WebSocketConnection from './WebSocketConnection';
+import reduce from './reduce';
+import actionsSyncedCallback from './actions/actionsSyncedCallback';
 
 interface Event<T> {
   change: Spec<T>;
@@ -16,79 +19,55 @@ interface ApiError {
   id?: number;
 }
 
-const PING = 'P';
-const PONG = 'p';
-const PING_INTERVAL = 20 * 1000;
-
 function isError(m: Event<unknown> | ApiError): m is ApiError {
   return m.error !== undefined;
 }
 
-function getWebSocketClass(): typeof WebSocket {
-  // This condition will disappear at compile time and the function will be inlined;
-  // The output in /build/ always uses WebSocket, never require('ws')
-
-  /* eslint-disable
-       import/no-extraneous-dependencies,
-       @typescript-eslint/no-require-imports,
-       global-require
-  */
-  return (process.env.NODE_ENV === 'production') ? WebSocket : require('ws');
-  /* eslint-enable
-       import/no-extraneous-dependencies,
-       @typescript-eslint/no-require-imports,
-       global-require
-  */
-}
-
 export default class SharedReducer<T> {
+  private connection: WebSocketConnection;
+
   private latestServerState?: T;
 
   private latestLocalState?: T;
 
   private currentChange?: Spec<T>;
 
-  private localChanges: Event<T>[] = [];
-
-  private pendingChanges: SpecSource<T>[] = [];
-
   private currentSyncCallbacks: SyncCallback<T>[] = [];
+
+  private localChanges: Event<T>[] = [];
 
   private syncCallbacks = new Map<number, SyncCallback<T>[]>();
 
+  private pendingChanges: SpecSource<T>[] = [];
+
+  private isDispatching = false;
+
   private idCounter = 0;
-
-  private ws: WebSocket;
-
-  private pingTimeout: NodeJS.Timeout | null = null;
 
   public constructor(
     wsUrl: string,
     token: string | undefined = undefined,
     private readonly changeCallback: ((state: T) => void) | undefined = undefined,
-    private readonly errorCallback: ((error: string) => void) | undefined = undefined,
+    errorCallback: ((error: string) => void) | undefined = undefined,
     private readonly warningCallback: ((error: string) => void) | undefined = undefined,
   ) {
-    this.ws = new (getWebSocketClass())(wsUrl);
-    this.ws.addEventListener('message', this.handleMessage);
-    this.ws.addEventListener('error', this.handleError);
-    this.ws.addEventListener('close', this.handleClose);
-    if (token) {
-      this.ws.addEventListener('open', () => this.ws.send(token), { once: true });
-    }
-    this.queueNextPing();
+    this.connection = new WebSocketConnection(
+      wsUrl,
+      token,
+      this.handleMessage,
+      errorCallback,
+    );
   }
 
   public close(): void {
-    this.ws.close();
+    this.connection.close();
     this.latestServerState = undefined;
     this.latestLocalState = undefined;
     this.currentChange = undefined;
+    this.currentSyncCallbacks = [];
     this.localChanges = [];
+    this.syncCallbacks.clear();
     this.pendingChanges = [];
-    if (this.pingTimeout !== null) {
-      clearTimeout(this.pingTimeout);
-    }
   }
 
   public dispatch: Dispatch<T> = (specs) => {
@@ -96,70 +75,46 @@ export default class SharedReducer<T> {
       return;
     }
 
-    if (!this.getState()) {
+    if (this.isDispatching) {
+      throw new Error('Cannot dispatch recursively');
+    }
+
+    const oldState = this.getState();
+    if (oldState === undefined) {
       this.pendingChanges.push(...specs);
-    } else if (this.internalApply(specs)) {
-      this.internalNotify();
+    } else {
+      const state = this.internalApply(oldState, specs);
+      if (state !== oldState) {
+        this.changeCallback?.(state);
+      }
     }
   };
 
   public addSyncCallback(callback: SyncCallback<T>): void {
-    if (this.currentChange !== undefined) {
-      this.currentSyncCallbacks.push(callback);
-      return;
-    }
-    const state = this.getState();
-    if (state === undefined) {
-      const initialSyncCallbacks = this.syncCallbacks.get(-1) || [];
-      initialSyncCallbacks.push(callback);
-      this.syncCallbacks.set(-1, initialSyncCallbacks);
-    } else {
-      callback(state);
-    }
+    this.dispatch([actionsSyncedCallback(callback)]);
   }
 
   public getState(): T | undefined {
     if (!this.latestLocalState && this.latestServerState) {
-      let state = update(
-        this.latestServerState,
-        combine(this.localChanges.map(({ change }) => change)),
-      );
-      if (this.currentChange) {
-        state = update(state, this.currentChange);
-      }
-      this.latestLocalState = state;
+      this.latestLocalState = this.internalLocalStateFromServerState(this.latestServerState);
     }
     return this.latestLocalState;
   }
 
-  private getStateKnownAvailable(): T {
-    /* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */
-    return this.getState()!;
-  }
-
-  private queueNextPing(): void {
-    if (this.pingTimeout !== null) {
-      clearTimeout(this.pingTimeout);
+  private internalLocalStateFromServerState(serverState: T): T {
+    let state = update(
+      serverState,
+      combine(this.localChanges.map(({ change }) => change)),
+    );
+    if (this.currentChange) {
+      state = update(state, this.currentChange);
     }
-    this.pingTimeout = setTimeout(this.sendPing, PING_INTERVAL);
+    return state;
   }
 
   private internalGetUniqueId(): number {
     this.idCounter += 1;
     return this.idCounter;
-  }
-
-  private internalNotify(): void {
-    this.changeCallback?.(this.getStateKnownAvailable());
-  }
-
-  private internalApplySyncCallbacks(id: number): void {
-    const callbacks = this.syncCallbacks.get(id);
-    if (callbacks) {
-      this.syncCallbacks.delete(id);
-      const state = this.getStateKnownAvailable();
-      callbacks.forEach((fn) => fn(state));
-    }
   }
 
   private internalSend = (): void => {
@@ -176,86 +131,35 @@ export default class SharedReducer<T> {
       this.syncCallbacks.set(event.id, this.currentSyncCallbacks);
       this.currentSyncCallbacks = [];
     }
-    this.ws.send(JSON.stringify(event));
+    this.connection.send(event);
     this.currentChange = undefined;
   };
 
-  private internalApplyPart(change: SpecSource<T>): boolean {
-    if (!change) {
-      return false;
-    }
-
-    const oldState = this.getStateKnownAvailable();
-
-    if (typeof change === 'function') {
-      if (change.afterSync) {
-        this.addSyncCallback(change);
-        return false;
-      }
-      const changes = change(oldState);
-      if (!changes || !changes.length) {
-        return false;
-      }
-      return this.internalApply(changes);
-    }
-
-    this.latestLocalState = update(oldState, change);
-    if (this.latestLocalState === oldState) {
-      // nothing changed
-      return false;
-    }
-
-    if (this.currentChange === undefined) {
-      this.currentChange = change;
-      setTimeout(this.internalSend, 0);
-    } else {
-      this.currentChange = combine<T>([this.currentChange, change]);
-    }
-    return true;
-  }
-
-  private internalApplyCombined(changes: Spec<T>[]): boolean {
-    return this.internalApplyPart(combine<T>(changes));
-  }
-
-  private internalApply(changes: SpecSource<T>[]): boolean {
-    let anyChange = false;
-    const aggregate: Spec<T>[] = [];
-    changes.forEach((change) => {
-      if (change && typeof change !== 'function') {
-        aggregate.push(change);
+  private internalApply(oldState: T, changes: SpecSource<T>[]): T {
+    this.isDispatching = true;
+    const { state, delta } = reduce(oldState, changes, (syncCallback, curState) => {
+      if (curState === oldState && !this.currentChange) {
+        syncCallback(oldState);
       } else {
-        if (aggregate.length > 0) {
-          anyChange = this.internalApplyCombined(aggregate) || anyChange;
-          aggregate.length = 0;
-        }
-        anyChange = this.internalApplyPart(change) || anyChange;
+        this.currentSyncCallbacks.push(syncCallback);
       }
     });
-    if (aggregate.length > 0) {
-      anyChange = this.internalApplyCombined(aggregate) || anyChange;
+    this.isDispatching = false;
+
+    if (state !== oldState) {
+      this.latestLocalState = state;
+      if (!this.currentChange) {
+        this.currentChange = delta;
+        setTimeout(this.internalSend, 0);
+      } else {
+        this.currentChange = combine<T>([this.currentChange, delta]);
+      }
     }
-    return anyChange;
+    return state;
   }
 
-  private internalApplyPendingChanges(): boolean {
-    if (!this.pendingChanges.length || !this.getState()) {
-      return false;
-    }
-
-    const anyChange = this.internalApply(this.pendingChanges);
-    this.pendingChanges.length = 0;
-    return anyChange;
-  }
-
-  private handleMessage = ({ data }: { data: string }): void => {
-    this.queueNextPing();
-    if (data === PONG) {
-      return;
-    }
-
-    const isFirst = this.latestServerState === undefined;
-    const message = JSON.parse(data) as Event<T> | ApiError;
+  private handleMessage = (data: unknown): void => {
+    const message = data as Event<T> | ApiError;
 
     const index = (message.id === undefined) ?
       -1 : this.localChanges.findIndex((c) => (c.id === message.id));
@@ -281,28 +185,28 @@ export default class SharedReducer<T> {
     if (changed) {
       this.latestLocalState = undefined;
     }
-    if (this.internalApplyPendingChanges() || changed) {
-      this.internalNotify();
+    let state = this.getState();
+    if (this.pendingChanges.length && state !== undefined) {
+      const newState = this.internalApply(state, this.pendingChanges);
+      if (newState !== state) {
+        state = newState;
+        changed = true;
+      }
+      this.pendingChanges.length = 0;
     }
-    if (isFirst) {
-      this.internalApplySyncCallbacks(-1);
+    if (changed && state !== undefined) {
+      this.changeCallback?.(state);
     }
     if (message.id !== undefined) {
-      this.internalApplySyncCallbacks(message.id);
-    }
-  };
-
-  private sendPing = (): void => {
-    this.ws.send(PING);
-  };
-
-  private handleError = (): void => {
-    this.errorCallback?.('Failed to connect');
-  };
-
-  private handleClose = (): void => {
-    if (this.pingTimeout !== null) {
-      clearTimeout(this.pingTimeout);
+      const callbacks = this.syncCallbacks.get(message.id);
+      if (callbacks) {
+        this.syncCallbacks.delete(message.id);
+        const fixedState = state;
+        if (fixedState === undefined) {
+          throw new Error('Did not receive initial state from server');
+        }
+        callbacks.forEach((fn) => fn(fixedState));
+      }
     }
   };
 }
