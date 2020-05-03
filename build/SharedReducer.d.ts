@@ -8,7 +8,6 @@ export default class SharedReducer<T> {
     private currentChange?;
     private currentSyncCallbacks;
     private localChanges;
-    private syncCallbacks;
     private pendingChanges;
     private dispatchLock;
     private nextId;
@@ -19,7 +18,9 @@ export default class SharedReducer<T> {
     getState(): T | undefined;
     private localStateFromServerState;
     private sendCurrentChange;
+    private addCurrentChange;
     private applySpecs;
+    private popLocalChange;
     private handleMessage;
 }
 //# sourceMappingURL=SharedReducer.d.ts.map

@@ -16,6 +16,17 @@ interface Event<T> {
   error?: undefined;
 }
 
+interface LocalChange<T> {
+  change: Spec<T>;
+  id: number;
+  syncCallbacks: SyncCallback<T>[];
+}
+
+interface LocalChangeIndex<T> {
+  localChange: LocalChange<T> | null;
+  index: number;
+}
+
 interface ApiError {
   error: string;
   id?: number;
@@ -36,9 +47,7 @@ export default class SharedReducer<T> {
 
   private currentSyncCallbacks: SyncCallback<T>[] = [];
 
-  private localChanges: Event<T>[] = [];
-
-  private syncCallbacks = new Map<number, SyncCallback<T>[]>();
+  private localChanges: LocalChange<T>[] = [];
 
   private pendingChanges: SpecSource<T>[] = [];
 
@@ -68,7 +77,6 @@ export default class SharedReducer<T> {
     this.currentChange = undefined;
     this.currentSyncCallbacks = [];
     this.localChanges = [];
-    this.syncCallbacks.clear();
     this.pendingChanges = [];
   }
 
@@ -112,20 +120,33 @@ export default class SharedReducer<T> {
       return;
     }
 
-    const event = {
-      change: this.currentChange,
-      id: this.nextId(),
-    };
-    this.localChanges.push(event);
-    if (this.currentSyncCallbacks.length > 0) {
-      this.syncCallbacks.set(event.id, this.currentSyncCallbacks);
-      this.currentSyncCallbacks = [];
-    }
-    this.connection.send(event);
+    const id = this.nextId();
+    const change = this.currentChange;
+    const syncCallbacks = this.currentSyncCallbacks;
     this.currentChange = undefined;
+    this.currentSyncCallbacks = [];
+
+    this.localChanges.push({ change, id, syncCallbacks });
+    this.connection.send({ change, id });
   };
 
+  private addCurrentChange(spec: Spec<T>): void {
+    if (!this.currentChange) {
+      this.currentChange = spec;
+      setTimeout(this.sendCurrentChange, 0);
+    } else {
+      this.currentChange = combine<T>([this.currentChange, spec]);
+    }
+  }
+
   private applySpecs(oldState: T, specs: SpecSource<T>[], forceChangeCallback: boolean): T {
+    if (!specs.length) { // optimisation for pendingChanges
+      if (forceChangeCallback) {
+        this.changeCallback?.(oldState);
+      }
+      return oldState;
+    }
+
     const { state, delta } = this.dispatchLock(() => reduce(
       oldState,
       specs,
@@ -140,12 +161,7 @@ export default class SharedReducer<T> {
 
     if (state !== oldState) {
       this.latestLocalState = state;
-      if (!this.currentChange) {
-        this.currentChange = delta;
-        setTimeout(this.sendCurrentChange, 0);
-      } else {
-        this.currentChange = combine<T>([this.currentChange, delta]);
-      }
+      this.addCurrentChange(delta);
     }
     if (state !== oldState || forceChangeCallback) {
       this.changeCallback?.(state);
@@ -153,50 +169,45 @@ export default class SharedReducer<T> {
     return state;
   }
 
+  private popLocalChange(id: number | undefined): LocalChangeIndex<T> {
+    const index = (id === undefined) ? -1 : this.localChanges.findIndex((c) => (c.id === id));
+    if (index === -1) {
+      return { localChange: null, index };
+    }
+    return {
+      localChange: this.localChanges.splice(index, 1)[0],
+      index,
+    };
+  }
+
   private handleMessage = (data: unknown): void => {
     const message = data as Event<T> | ApiError;
 
-    const index = (message.id === undefined) ?
-      -1 : this.localChanges.findIndex((c) => (c.id === message.id));
-    if (index !== -1) {
-      this.localChanges.splice(index, 1);
-    }
+    const { localChange, index } = this.popLocalChange(message.id);
 
-    let changed = true;
     if (isError(message)) {
       this.warningCallback?.(`Update failed: ${message.error}`);
-    } else {
-      if (index === 0) {
-        // removed the oldest pending change and applied it to the base
-        // server state: nothing has changed
-        changed = false;
+      this.latestLocalState = undefined;
+      const state = this.getState();
+      if (state) {
+        this.changeCallback?.(state);
+        localChange?.syncCallbacks.forEach((fn) => fn(state));
       }
-      this.latestServerState = update(
-        this.latestServerState || ({} as T),
-        message.change,
-      );
+      return;
     }
 
-    if (changed) {
-      this.latestLocalState = undefined;
+    // if first, removed the oldest pending change and applied it to
+    // the base server state: nothing has changed
+    const changedOrder = (index !== 0);
+
+    this.latestServerState = update(this.latestServerState || ({} as T), message.change);
+
+    if (!this.latestLocalState || changedOrder) {
+      this.latestLocalState = this.localStateFromServerState(this.latestServerState);
     }
-    let state = this.getState();
-    if (this.pendingChanges.length && state !== undefined) {
-      state = this.applySpecs(state, this.pendingChanges, changed);
-      this.pendingChanges.length = 0;
-    } else if (changed && state !== undefined) {
-      this.changeCallback?.(state);
-    }
-    if (message.id !== undefined) {
-      const callbacks = this.syncCallbacks.get(message.id);
-      if (callbacks) {
-        this.syncCallbacks.delete(message.id);
-        const fixedState = state;
-        if (fixedState === undefined) {
-          throw new Error('Did not receive initial state from server');
-        }
-        callbacks.forEach((fn) => fn(fixedState));
-      }
-    }
+    let state = this.latestLocalState;
+    state = this.applySpecs(state, this.pendingChanges, changedOrder);
+    this.pendingChanges.length = 0;
+    localChange?.syncCallbacks.forEach((fn) => fn(state));
   };
 }
