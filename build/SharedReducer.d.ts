@@ -10,17 +10,16 @@ export default class SharedReducer<T> {
     private localChanges;
     private syncCallbacks;
     private pendingChanges;
-    private isDispatching;
-    private idCounter;
+    private dispatchLock;
+    private nextId;
     constructor(wsUrl: string, token?: string | undefined, changeCallback?: ((state: T) => void) | undefined, errorCallback?: ((error: string) => void) | undefined, warningCallback?: ((error: string) => void) | undefined);
     close(): void;
     dispatch: Dispatch<T>;
     addSyncCallback(callback: SyncCallback<T>): void;
     getState(): T | undefined;
-    private internalLocalStateFromServerState;
-    private internalGetUniqueId;
-    private internalSend;
-    private internalApply;
+    private localStateFromServerState;
+    private sendCurrentChange;
+    private applySpecs;
     private handleMessage;
 }
 //# sourceMappingURL=SharedReducer.d.ts.map

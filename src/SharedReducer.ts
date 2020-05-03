@@ -7,6 +7,8 @@ import type {
 import WebSocketConnection from './WebSocketConnection';
 import reduce from './reduce';
 import actionsSyncedCallback from './actions/actionsSyncedCallback';
+import idProvider from './idProvider';
+import lock from './lock';
 
 interface Event<T> {
   change: Spec<T>;
@@ -40,9 +42,9 @@ export default class SharedReducer<T> {
 
   private pendingChanges: SpecSource<T>[] = [];
 
-  private isDispatching = false;
+  private dispatchLock = lock('Cannot dispatch recursively');
 
-  private idCounter = 0;
+  private nextId = idProvider();
 
   public constructor(
     wsUrl: string,
@@ -75,18 +77,11 @@ export default class SharedReducer<T> {
       return;
     }
 
-    if (this.isDispatching) {
-      throw new Error('Cannot dispatch recursively');
-    }
-
     const oldState = this.getState();
     if (oldState === undefined) {
       this.pendingChanges.push(...specs);
     } else {
-      const state = this.internalApply(oldState, specs);
-      if (state !== oldState) {
-        this.changeCallback?.(state);
-      }
+      this.applySpecs(oldState, specs, false);
     }
   };
 
@@ -96,12 +91,12 @@ export default class SharedReducer<T> {
 
   public getState(): T | undefined {
     if (!this.latestLocalState && this.latestServerState) {
-      this.latestLocalState = this.internalLocalStateFromServerState(this.latestServerState);
+      this.latestLocalState = this.localStateFromServerState(this.latestServerState);
     }
     return this.latestLocalState;
   }
 
-  private internalLocalStateFromServerState(serverState: T): T {
+  private localStateFromServerState(serverState: T): T {
     let state = update(
       serverState,
       combine(this.localChanges.map(({ change }) => change)),
@@ -112,19 +107,14 @@ export default class SharedReducer<T> {
     return state;
   }
 
-  private internalGetUniqueId(): number {
-    this.idCounter += 1;
-    return this.idCounter;
-  }
-
-  private internalSend = (): void => {
-    if (this.currentChange === undefined) {
+  private sendCurrentChange = (): void => {
+    if (!this.currentChange) {
       return;
     }
 
     const event = {
       change: this.currentChange,
-      id: this.internalGetUniqueId(),
+      id: this.nextId(),
     };
     this.localChanges.push(event);
     if (this.currentSyncCallbacks.length > 0) {
@@ -135,25 +125,30 @@ export default class SharedReducer<T> {
     this.currentChange = undefined;
   };
 
-  private internalApply(oldState: T, changes: SpecSource<T>[]): T {
-    this.isDispatching = true;
-    const { state, delta } = reduce(oldState, changes, (syncCallback, curState) => {
-      if (curState === oldState && !this.currentChange) {
-        syncCallback(oldState);
-      } else {
-        this.currentSyncCallbacks.push(syncCallback);
-      }
-    });
-    this.isDispatching = false;
+  private applySpecs(oldState: T, specs: SpecSource<T>[], forceChangeCallback: boolean): T {
+    const { state, delta } = this.dispatchLock(() => reduce(
+      oldState,
+      specs,
+      (syncCallback, curState) => {
+        if (curState === oldState && !this.currentChange) {
+          syncCallback(oldState);
+        } else {
+          this.currentSyncCallbacks.push(syncCallback);
+        }
+      },
+    ));
 
     if (state !== oldState) {
       this.latestLocalState = state;
       if (!this.currentChange) {
         this.currentChange = delta;
-        setTimeout(this.internalSend, 0);
+        setTimeout(this.sendCurrentChange, 0);
       } else {
         this.currentChange = combine<T>([this.currentChange, delta]);
       }
+    }
+    if (state !== oldState || forceChangeCallback) {
+      this.changeCallback?.(state);
     }
     return state;
   }
@@ -187,14 +182,9 @@ export default class SharedReducer<T> {
     }
     let state = this.getState();
     if (this.pendingChanges.length && state !== undefined) {
-      const newState = this.internalApply(state, this.pendingChanges);
-      if (newState !== state) {
-        state = newState;
-        changed = true;
-      }
+      state = this.applySpecs(state, this.pendingChanges, changed);
       this.pendingChanges.length = 0;
-    }
-    if (changed && state !== undefined) {
+    } else if (changed && state !== undefined) {
       this.changeCallback?.(state);
     }
     if (message.id !== undefined) {
