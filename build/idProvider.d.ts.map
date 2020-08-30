@@ -1,1 +1,1 @@
-{"version":3,"file":"idProvider.d.ts","sourceRoot":"","sources":["../src/idProvider.ts"],"names":[],"mappings":"AAAA,oBAAY,QAAQ,CAAC,CAAC,IAAI,MAAM,CAAC,CAAC;;AAElC,wBAME"}
+{"version":3,"file":"idProvider.d.ts","sourceRoot":"","sources":["../src/idProvider.ts"],"names":[],"mappings":"AAAA,oBAAY,QAAQ,CAAC,CAAC,IAAI,MAAM,CAAC,CAAC;8BAEf,SAAS,MAAM,CAAC;AAAnC,wBAME"}

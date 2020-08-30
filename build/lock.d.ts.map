@@ -1,1 +1,1 @@
-{"version":3,"file":"lock.d.ts","sourceRoot":"","sources":["../src/lock.ts"],"names":[],"mappings":"AAAA,oBAAY,IAAI,GAAG,CAAC,CAAC,EAAE,MAAM,EAAE,MAAM,CAAC,KAAK,CAAC,CAAC;;AAE7C,wBAaE"}
+{"version":3,"file":"lock.d.ts","sourceRoot":"","sources":["../src/lock.ts"],"names":[],"mappings":"AAAA,oBAAY,IAAI,GAAG,CAAC,CAAC,EAAE,MAAM,EAAE,MAAM,CAAC,KAAK,CAAC,CAAC;uCAEf,MAAM,KAAG,IAAI;AAA3C,wBAaE"}

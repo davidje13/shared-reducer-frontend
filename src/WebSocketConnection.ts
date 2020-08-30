@@ -40,7 +40,7 @@ export default class WebSocketConnection {
     this.queueNextPing();
   }
 
-  public send(message: object): void {
+  public send(message: unknown): void {
     this.ws.send(JSON.stringify(message));
   }
 

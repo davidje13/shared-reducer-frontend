@@ -4,7 +4,7 @@ export default class WebSocketConnection {
     private ws;
     private pingTimeout;
     constructor(wsUrl: string, token: string | undefined, messageCallback: (message: unknown) => void, errorCallback?: ((error: string) => void) | undefined);
-    send(message: object): void;
+    send(message: unknown): void;
     close(): void;
     private queueNextPing;
     private sendPing;

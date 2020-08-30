@@ -9,6 +9,6 @@ export default function actionsSyncedCallback<T>(
   }
   const fn = (state: T): void => resolve?.(state);
   fn.reject = reject;
-  fn.afterSync = true as true;
+  fn.afterSync = true as const;
   return fn;
 }
