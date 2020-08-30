@@ -55,7 +55,7 @@ export default function reduce<T>(
         registerSyncCallback(change, state);
         return null;
       }
-      return change(oldState);
+      return change(state);
     }
     if (change) {
       aggregate.push(change);

@@ -85,6 +85,71 @@ describe('e2e', () => {
       expect(state).toEqual({ foo: 'v2', bar: 10 });
     });
 
+    it('accepts chained specs', async () => {
+      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      await reducer.syncedState();
+
+      reducer.dispatch([
+        { bar: ['=', 1] },
+        { bar: ['+', 2] },
+        { bar: ['+', 3] },
+      ]);
+      reducer.dispatch([{ bar: ['+', 5] }]);
+      const state = await reducer.syncedState();
+
+      expect(state.bar).toEqual(11);
+    });
+
+    it('accepts spec generator functions', async () => {
+      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      await reducer.syncedState();
+
+      reducer.dispatch([() => [{ bar: ['=', 2] }]]);
+      const state = await reducer.syncedState();
+
+      expect(state.bar).toEqual(2);
+    });
+
+    it('provides current state to state generator functions', async () => {
+      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      await reducer.syncedState();
+
+      reducer.dispatch([{ bar: ['=', 5] }]);
+      reducer.dispatch([(state) => [{ bar: ['=', state.bar * 3] }]]);
+      const state = await reducer.syncedState();
+
+      expect(state.bar).toEqual(15);
+    });
+
+    it('provides current state to state generator functions when chaining', async () => {
+      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      await reducer.syncedState();
+
+      reducer.dispatch([
+        { bar: ['=', 5] },
+        (state) => [{ bar: ['=', state.bar * 3] }],
+      ]);
+      const state = await reducer.syncedState();
+
+      expect(state.bar).toEqual(15);
+    });
+
+    it('passes state from previous generators to subsequent generators', async () => {
+      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      await reducer.syncedState();
+
+      reducer.dispatch([
+        { bar: ['=', 5] },
+        (state) => [{ bar: ['=', state.bar * 3] }],
+        (state) => [{ bar: ['=', state.bar + 2] }],
+        { bar: ['+', 1] },
+        (state) => [{ bar: ['=', state.bar * 2] }],
+      ]);
+      const state = await reducer.syncedState();
+
+      expect(state.bar).toEqual(36);
+    });
+
     it('pushes external state changes', (done) => {
       let waiting = false;
       reducer = new SharedReducer<TestT>(`${host}/a`, undefined, (state) => {
