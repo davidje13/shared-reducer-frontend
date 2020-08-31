@@ -10,7 +10,12 @@ module.exports = {
     tests: '(src|e2e)',
   },
   use: [
-    typescript({ declaration: true }),
+    typescript({ tsconfig: {
+      compilerOptions: {
+        strict: true,
+        declaration: true,
+      },
+    } }),
     typescriptLint(),
     airbnbBase({
       eslint: {
