@@ -1,14 +1,13 @@
-import type { SpecSource } from '../DispatchSpec';
+import { SyncCallback } from '../DispatchSpec';
+
+const NOP = (): null => null;
 
 export default function actionsSyncedCallback<T>(
   resolve?: (state: T) => void,
   reject?: (message: string) => void,
-): SpecSource<T> {
+): SyncCallback<T> | null {
   if (!resolve && !reject) {
     return null;
   }
-  const fn = (state: T): void => resolve?.(state);
-  fn.reject = reject;
-  fn.afterSync = true as const;
-  return fn;
+  return new SyncCallback(resolve || NOP, reject || NOP);
 }

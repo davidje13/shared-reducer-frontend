@@ -1,8 +1,6 @@
-import type { SpecSource } from '../DispatchSpec';
-
 export default function actionsHandledCallback<T>(
   callback?: (state: T) => void,
-): SpecSource<T> {
+): ((state: T) => null) | null {
   if (!callback) {
     return null;
   }

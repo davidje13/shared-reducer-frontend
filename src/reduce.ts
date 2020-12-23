@@ -1,5 +1,9 @@
-import { update, combine, Spec } from 'json-immutability-helper';
-import type { SpecSource, SyncCallback } from './DispatchSpec';
+import {
+  Context,
+  SpecGenerator,
+  SpecSource,
+  SyncCallback,
+} from './DispatchSpec';
 
 interface StackFrame<T> {
   vs: T[];
@@ -25,37 +29,40 @@ function iterateStack<T>(
   }
 }
 
-interface ReductionResult<T> {
+interface ReductionResult<T, SpecT> {
   state: T;
-  delta: Spec<T>;
+  delta: SpecT;
 }
 
-export default function reduce<T>(
+export default function reduce<T, SpecT>(
+  context: Context<T, SpecT>,
   oldState: T,
-  baseChanges: SpecSource<T>[],
+  baseChanges: SpecSource<T, SpecT>[],
   registerSyncCallback: (fn: SyncCallback<T>, currentState: T) => void,
-): ReductionResult<T> {
+): ReductionResult<T, SpecT> {
   let state: T = oldState;
 
-  const allChanges: Spec<T>[] = [];
-  const aggregate: Spec<T>[] = [];
+  const allChanges: SpecT[] = [];
+  const aggregate: SpecT[] = [];
   function applyAggregate(): void {
     if (aggregate.length > 0) {
-      const combinedChange = combine<T>(aggregate);
+      const combinedChange = context.combine(aggregate);
       allChanges.push(combinedChange);
-      state = update(state, combinedChange);
+      state = context.update(state, combinedChange);
       aggregate.length = 0;
     }
   }
 
   iterateStack(baseChanges, (change) => {
+    if (change instanceof SyncCallback) {
+      applyAggregate();
+      registerSyncCallback(change, state);
+      return null;
+    }
     if (typeof change === 'function') {
       applyAggregate();
-      if (change.afterSync) {
-        registerSyncCallback(change, state);
-        return null;
-      }
-      return change(state);
+      const generator = change as SpecGenerator<T, SpecT>;
+      return generator(state);
     }
     if (change) {
       aggregate.push(change);
@@ -63,5 +70,5 @@ export default function reduce<T>(
     return null;
   });
   applyAggregate();
-  return { state, delta: combine<T>(allChanges) };
+  return { state, delta: context.combine(allChanges) };
 }

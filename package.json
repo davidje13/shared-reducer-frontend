@@ -30,9 +30,6 @@
     "url": "https://github.com/davidje13/shared-reducer-frontend/issues"
   },
   "homepage": "https://github.com/davidje13/shared-reducer-frontend#readme",
-  "dependencies": {
-    "json-immutability-helper": "2.x"
-  },
   "devDependencies": {
     "@babel/preset-env": "7.x",
     "@neutrinojs/airbnb-base": "9.x",
@@ -41,10 +38,11 @@
     "@types/jest": "26.x",
     "eslint": "7.x",
     "jest": "26.x",
-    "neutrino": "9.x",
+    "json-immutability-helper": "3.x",
+    "neutrino": "9.3.x",
     "neutrinojs-typescript": "1.x",
     "neutrinojs-typescript-eslint": "1.x",
-    "shared-reducer-backend": "2.x",
+    "shared-reducer-backend": "3.x",
     "typescript": "4.0.x",
     "webpack": "4.x",
     "webpack-cli": "3.x",

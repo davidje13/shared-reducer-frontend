@@ -5,6 +5,7 @@ import {
   ReadWrite,
   ReadOnly,
 } from 'shared-reducer-backend';
+import context, { Spec } from 'json-immutability-helper';
 import type { Server } from 'http';
 import type { AddressInfo } from 'net';
 import WebSocketExpress from 'websocket-express';
@@ -16,7 +17,9 @@ interface TestT {
 }
 
 const model = new InMemoryModel<TestT>();
-const broadcaster = new Broadcaster(model);
+const broadcaster = Broadcaster.for(model)
+  .withReducer<Spec<TestT>>(context)
+  .build();
 
 const app = new WebSocketExpress();
 const handler = websocketHandler(broadcaster);
@@ -34,8 +37,8 @@ function addressToString(addr: AddressInfo | string, protocol = 'http'): string 
 
 describe('e2e', () => {
   let server: Server | undefined;
-  let reducer: SharedReducer<TestT> | undefined;
-  let reducer2: SharedReducer<TestT> | undefined;
+  let reducer: SharedReducer<TestT, Spec<TestT>> | undefined;
+  let reducer2: SharedReducer<TestT, Spec<TestT>> | undefined;
   let host = '';
 
   beforeEach((done) => {
@@ -57,26 +60,32 @@ describe('e2e', () => {
 
   describe('one client', () => {
     it('sends initial state from server to client', (done) => {
-      reducer = new SharedReducer<TestT>(
-        `${host}/a`,
-        undefined,
-        (state) => {
-          expect(state).toEqual({ foo: 'v1', bar: 10 });
-          done();
-        },
-        done.fail,
-        done.fail
-      );
+      reducer = SharedReducer.for<TestT>(`${host}/a`, (state) => {
+        expect(state).toEqual({ foo: 'v1', bar: 10 });
+        done();
+      })
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(done.fail)
+        .withWarningHandler(done.fail)
+        .build();
     });
 
     it('invokes synchronize callbacks when state is first retrieved', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       const state = await reducer.syncedState();
       expect(state).toEqual({ foo: 'v1', bar: 10 });
     });
 
     it('reflects state changes back to the sender', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([{ foo: ['=', 'v2'] }]);
@@ -86,7 +95,11 @@ describe('e2e', () => {
     });
 
     it('accepts chained specs', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([
@@ -101,7 +114,11 @@ describe('e2e', () => {
     });
 
     it('accepts spec generator functions', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([() => [{ bar: ['=', 2] }]]);
@@ -111,7 +128,11 @@ describe('e2e', () => {
     });
 
     it('provides current state to state generator functions', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([{ bar: ['=', 5] }]);
@@ -122,7 +143,11 @@ describe('e2e', () => {
     });
 
     it('provides current state to state generator functions when chaining', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([
@@ -135,7 +160,11 @@ describe('e2e', () => {
     });
 
     it('passes state from previous generators to subsequent generators', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([
@@ -152,13 +181,17 @@ describe('e2e', () => {
 
     it('pushes external state changes', (done) => {
       let waiting = false;
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, (state) => {
+      reducer = SharedReducer.for<TestT>(`${host}/a`, (state) => {
         if (!waiting) {
           return;
         }
         expect(state).toEqual({ foo: 'v2', bar: 10 });
         done();
-      }, fail, fail);
+      })
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
 
       reducer.syncedState().then(() => {
         waiting = true;
@@ -167,7 +200,11 @@ describe('e2e', () => {
     });
 
     it('merges external state changes', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       await broadcaster.update('a', { foo: ['=', 'v2'] });
@@ -178,7 +215,11 @@ describe('e2e', () => {
     });
 
     it('maintains local state changes until the server syncs', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([{ foo: ['=', 'v2'] }]);
@@ -186,7 +227,11 @@ describe('e2e', () => {
     });
 
     it('applies local state changes on top of the server state', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
 
       await broadcaster.update('a', { bar: ['=', 20] });
@@ -201,22 +246,23 @@ describe('e2e', () => {
 
   describe('readonly client', () => {
     it('invokes the warning callback when the server rejects a change', (done) => {
-      reducer = new SharedReducer<TestT>(
-        `${host}/a/read`,
-        undefined,
-        undefined,
-        done.fail,
-        (warning: string) => {
-          expect(warning).toEqual('Update failed: Cannot modify data');
+      reducer = SharedReducer.for<TestT>(`${host}/a/read`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler((warning: string) => {
+          expect(warning).toEqual('API rejected update: Cannot modify data');
           done();
-        },
-      );
+        })
+        .build();
 
       reducer.dispatch([{ bar: ['=', 11] }]);
     });
 
     it('rolls back local change when rejected by server', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a/read`, undefined, undefined, fail, undefined);
+      reducer = SharedReducer.for<TestT>(`${host}/a/read`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([{ bar: ['=', 11] }]);
@@ -229,7 +275,10 @@ describe('e2e', () => {
     });
 
     it('rejects sync promises when rejected by server', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a/read`, undefined, undefined, fail, undefined);
+      reducer = SharedReducer.for<TestT>(`${host}/a/read`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .build();
       await reducer.syncedState();
 
       reducer.dispatch([{ bar: ['=', 11] }]);
@@ -240,8 +289,16 @@ describe('e2e', () => {
 
   describe('two clients', () => {
     it('pushes changes between clients', async () => {
-      reducer = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
-      reducer2 = new SharedReducer<TestT>(`${host}/a`, undefined, undefined, fail, fail);
+      reducer = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
+      reducer2 = SharedReducer.for<TestT>(`${host}/a`)
+        .withReducer<Spec<TestT>>(context)
+        .withErrorHandler(fail)
+        .withWarningHandler(fail)
+        .build();
       await reducer.syncedState();
       await reducer2.syncedState();
 

@@ -1,17 +1,14 @@
-import type { Spec } from 'json-immutability-helper';
-export interface SyncCallback<T> {
-    reject?: (message: string) => void;
-    (state: T): void;
+export interface Context<T, SpecT> {
+    update: (input: T, spec: SpecT) => T;
+    combine: (specs: SpecT[]) => SpecT;
 }
-interface MarkedSyncCallback<T> extends SyncCallback<T> {
-    afterSync: true;
+export declare class SyncCallback<T> {
+    readonly sync: (state: T) => void;
+    readonly reject: (message: string) => void;
+    constructor(sync: (state: T) => void, reject: (message: string) => void);
 }
-interface SpecGenerator<T> {
-    afterSync?: false;
-    (state: T): SpecSource<T>[] | null | undefined;
-}
-export declare type SpecSource<T> = (Spec<T> | SpecGenerator<T> | MarkedSyncCallback<T> | null | undefined);
-export declare type DispatchSpec<T> = SpecSource<T>[];
-export declare type Dispatch<T> = (specs: DispatchSpec<T> | null | undefined) => void;
-export {};
+export declare type SpecGenerator<T, SpecT> = (state: T) => SpecSource<T, SpecT>[] | null | undefined;
+export declare type SpecSource<T, SpecT> = (SpecT | SpecGenerator<T, SpecT> | SyncCallback<T> | null | undefined);
+export declare type DispatchSpec<T, SpecT> = SpecSource<T, SpecT>[];
+export declare type Dispatch<T, SpecT> = (specs: DispatchSpec<T, SpecT> | null | undefined) => void;
 //# sourceMappingURL=DispatchSpec.d.ts.map

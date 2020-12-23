@@ -1,9 +1,8 @@
-import { Spec } from 'json-immutability-helper';
-import type { SpecSource, SyncCallback } from './DispatchSpec';
-interface ReductionResult<T> {
+import { Context, SpecSource, SyncCallback } from './DispatchSpec';
+interface ReductionResult<T, SpecT> {
     state: T;
-    delta: Spec<T>;
+    delta: SpecT;
 }
-export default function reduce<T>(oldState: T, baseChanges: SpecSource<T>[], registerSyncCallback: (fn: SyncCallback<T>, currentState: T) => void): ReductionResult<T>;
+export default function reduce<T, SpecT>(context: Context<T, SpecT>, oldState: T, baseChanges: SpecSource<T, SpecT>[], registerSyncCallback: (fn: SyncCallback<T>, currentState: T) => void): ReductionResult<T, SpecT>;
 export {};
 //# sourceMappingURL=reduce.d.ts.map

@@ -1,23 +1,22 @@
-import type { Spec } from 'json-immutability-helper';
+export interface Context<T, SpecT> {
+  update: (input: T, spec: SpecT) => T;
+  combine: (specs: SpecT[]) => SpecT;
+}
 
-export interface SyncCallback<T> {
-  reject?: (message: string) => void;
-  (state: T): void;
+export class SyncCallback<T> {
+  constructor(
+    public readonly sync: (state: T) => void,
+    public readonly reject: (message: string) => void,
+  ) {}
 }
-interface MarkedSyncCallback<T> extends SyncCallback<T> {
-  afterSync: true;
-}
-interface SpecGenerator<T> {
-  afterSync?: false;
-  (state: T): SpecSource<T>[] | null | undefined;
-}
-export type SpecSource<T> = (
-  Spec<T> |
-  SpecGenerator<T> |
-  MarkedSyncCallback<T> |
+export type SpecGenerator<T, SpecT> = (state: T) => SpecSource<T, SpecT>[] | null | undefined;
+export type SpecSource<T, SpecT> = (
+  SpecT |
+  SpecGenerator<T, SpecT> |
+  SyncCallback<T> |
   null |
   undefined
 );
 
-export type DispatchSpec<T> = SpecSource<T>[];
-export type Dispatch<T> = (specs: DispatchSpec<T> | null | undefined) => void;
+export type DispatchSpec<T, SpecT> = SpecSource<T, SpecT>[];
+export type Dispatch<T, SpecT> = (specs: DispatchSpec<T, SpecT> | null | undefined) => void;
